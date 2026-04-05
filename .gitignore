@@ -1,1 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
 venv/
+ENV/
+env/
+.env
+
+# SecureVault State & Sensitive Assets
+# ---
+# DO NOT COMMIT PRIVATE KEYS OR ENCRYPTED DATA
+*.pem
+*.key
+*.enc
+vault_config.json
+lock_status.json
+secure_vault.log
+
+# Project Specific
+.idea/
+.vscode/
