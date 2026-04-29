@@ -54,37 +54,91 @@ graph TD
 | **Admin Key Theft** | RSA-3072 Asymmetric Recovery Logic | High (Separation of duties) |
 | **Side-Channel Analysis** | Constant-time operation (Library-dependent) | Medium (Environment Dependent) |
 
-## Usage Guide
+## Quick Start
 
-### 1. Initialization
+### Prerequisites
+```powershell
+pip install -r requirements.txt
+```
+
+### Interactive Demo (Recommended)
+Run the full interactive demonstration that walks through all features step-by-step:
+```powershell
+python run_demo.py
+```
+Or simply double-click `run_demo.bat`.
+
+The demo covers:
+1. **Vault Initialization** — RSA-3072 key pair generation
+2. **USB Key Transfer** — Moves recovery key to a real USB pen drive
+3. **File Encryption** — You type your own message and password
+4. **File Decryption** — Recovers the original file
+5. **Tamper Resistance** — Simulates a bit-flip attack, shows ASCON-128 detection
+6. **Brute Force & Lockout** — Dictionary attack triggers 3-strike lockout
+7. **Emergency Recovery** — RSA key from USB unlocks the vault
+
+### Manual Usage
+
+#### 1. Initialization
 Generate the RSA recovery pair. **Keep `recovery_key.pem` secure and offline.**
 ```powershell
 python secure_vault.py init
 ```
 
-### 2. Encryption
+#### 2. Encryption
 Secure any file with a strong master password.
 ```powershell
 python secure_vault.py encrypt secret_data.txt --password "MySUp3rS3cr3t"
 ```
 
-### 3. Decryption
+#### 3. Decryption
 Restore access to your encrypted vault.
 ```powershell
 python secure_vault.py decrypt secret_data.txt.enc --password "MySUp3rS3cr3t"
 ```
 
-### 4. Emergency Recovery
-Reset Strike limits or regain access if the master password is lost using the RSA Private Key.
+#### 4. Emergency Recovery
+Reset strike limits or regain access if the master password is lost using the RSA Private Key.
 ```powershell
 python secure_vault.py recover --key recovery_key.pem
 ```
 
-## Project Files
-- `secure_vault.py`: Core Enterprise Engine.
-- `tamper.py`: Forensic tool for simulating integrity failures.
-- `exploit_poc.py`: Proof-of-concept demonstration of brute-force resistance.
-- `SecureFile_Research_Paper.pdf`: Accompanying academic justification.
+## Project Structure
+
+```
+SecureFile/
+│
+├── secure_vault.py          Core engine — init, encrypt, decrypt, recover
+│   ├── Line 33:  init_vault()      →  RSA key generation
+│   ├── Line 54:  recover_vault()   →  RSA challenge/response
+│   ├── Line 90:  encrypt()         →  AES-256 + ASCON-128 encryption
+│   └── Line 119: decrypt()         →  Integrity check + decryption
+│
+├── attacks/
+│   ├── tamper.py                   Integrity attack simulation (XOR bit-flip)
+│   └── exploit_poc.py              Dictionary brute-force simulation
+│
+├── docs/
+│   ├── README.md                   Project documentation & architecture
+│   └── SecureFile_Research_Paper.pdf.pdf   Academic research paper
+│
+├── run_demo.py                     Interactive viva demonstration script
+├── run_demo.bat                    One-click demo launcher
+├── pattern.txt                     Sample file for encryption
+├── requirements.txt                Python dependencies (pycryptodome, ascon)
+└── .gitignore
+```
+
+## Core Code Map
+
+| Function | File | Line | Purpose |
+| :--- | :--- | :--- | :--- |
+| `init_vault()` | `secure_vault.py` | 33 | Generates RSA-3072 key pair for recovery |
+| `recover_vault()` | `secure_vault.py` | 54 | RSA challenge-response to bypass lockout |
+| `CryptoEngine.encrypt()` | `secure_vault.py` | 90 | AES-256-GCM + ASCON-128 encryption pipeline |
+| `CryptoEngine.decrypt()` | `secure_vault.py` | 119 | ASCON integrity check → AES-GCM decryption |
+| `tamper.py` | `attacks/` | — | XOR bit-flip on encrypted header |
+| `exploit_poc.py` | `attacks/` | — | Dictionary attack with 7 common passwords |
 
 ---
 *Developed for the Modern Cryptography course. All rights reserved.*
