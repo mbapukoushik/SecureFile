@@ -1,12 +1,15 @@
 INFO     Initializing Enterprise Vault (RSA-3072)...
-INFO     ✔ Vault Configured. MOVE 'recovery_key.pem' TO USB STORAGE IMMEDIATELY.
-INFO     ✔ Secured:  pattern.txt.enc
-INFO     ✔ Restored:  pattern.txt
+INFO     [OK] Vault Configured. MOVE 'recovery_key.pem' TO USB STORAGE IMMEDIATELY.
+INFO     [OK] Secured:  secret.txt.enc
 WARNING  Strike 1/3
+INFO     [OK] Secured:  secret.txt.enc
 WARNING  Strike 2/3
+INFO     [OK] Secured:  secret.txt.enc
 WARNING  Strike 3/3
 CRITICAL SYSTEM LOCKED.
 CRITICAL SYSTEM LOCKED.
 CRITICAL SYSTEM LOCKED.
 CRITICAL SYSTEM LOCKED.
 CRITICAL SYSTEM LOCKED.
+CRITICAL SYSTEM LOCKED.
+INFO     [OK] Identity Verified. System Unlocked.

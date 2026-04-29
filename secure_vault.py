@@ -27,64 +27,121 @@ def setup_logging():
     logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(message)s", handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(LOG_FILE)])
     return logging.getLogger("SecureVault")
 
+# ==========================================
+# 1. KEY MANAGEMENT & INITIALIZATION LAYER
+# ==========================================
 def init_vault(logger):
-    if os.path.exists(VAULT_CONFIG): sys.exit("[!] Vault already initialized.")
+    """Generates the RSA-3072 key pair used for emergency recovery bypass."""
+    if os.path.exists(VAULT_CONFIG):
+        sys.exit("[!] Vault already initialized.")
+        
     logger.info(f"Initializing Enterprise Vault (RSA-{RSA_KEY_SIZE})...")
     keypair = RSA.generate(RSA_KEY_SIZE)
-    with open(VAULT_CONFIG, 'w') as f: json.dump({"public_key": keypair.publickey().export_key().decode()}, f)
-    with open(RECOVERY_KEY, 'wb') as f: f.write(keypair.export_key())
-    logger.info( "✔ Vault Configured. MOVE 'recovery_key.pem' TO USB STORAGE IMMEDIATELY." )
+    
+    # Save the public key in the config file
+    with open(VAULT_CONFIG, 'w') as f: 
+        json.dump({"public_key": keypair.publickey().export_key().decode()}, f)
+        
+    # Export the private key as recovery_key.pem
+    with open(RECOVERY_KEY, 'wb') as f: 
+        f.write(keypair.export_key())
+        
+    logger.info( "[OK] Vault Configured. MOVE 'recovery_key.pem' TO USB STORAGE IMMEDIATELY." )
 
+# ==========================================
+# 2. EMERGENCY RECOVERY LAYER
+# ==========================================
 def recover_vault(logger, key_path):
-    if not os.path.exists(VAULT_CONFIG): sys.exit("[!] Run 'init' first.")
+    """Uses the RSA Private Key to bypass the lockout mechanism."""
+    if not os.path.exists(VAULT_CONFIG): 
+        sys.exit("[!] Run 'init' first.")
+        
     try:
-        with open(VAULT_CONFIG) as f: pub_key = RSA.import_key(json.load(f)["public_key"])
-        with open(key_path, 'rb') as f: priv_key = RSA.import_key(f.read())
+        # Load keys
+        with open(VAULT_CONFIG) as f: 
+            pub_key = RSA.import_key(json.load(f)["public_key"])
+        with open(key_path, 'rb') as f: 
+            priv_key = RSA.import_key(f.read())
 
+        # Verify the key using an encryption/decryption challenge
         challenge = get_random_bytes(32)
         cipher_enc = PKCS1_OAEP.new(pub_key, hashAlgo=SHA256)
         cipher_dec = PKCS1_OAEP.new(priv_key, hashAlgo=SHA256)
 
-        if challenge != cipher_dec.decrypt(cipher_enc.encrypt(challenge)): raise ValueError
-        with open(LOCK_FILE, 'w') as f: json.dump({"attempts": 0}, f)
-        logger.info( "✔ Identity Verified. System Unlocked." )
+        if challenge != cipher_dec.decrypt(cipher_enc.encrypt(challenge)): 
+            raise ValueError
+            
+        # Reset strikes if successful
+        with open(LOCK_FILE, 'w') as f: 
+            json.dump({"attempts": 0}, f)
+            
+        logger.info( "[OK] Identity Verified. System Unlocked." )
     except:
         logger.critical("SECURITY ALERT: Access Denied (Key Mismatch)")
         sys.exit(1)
 
 class CryptoEngine:
-    def __init__(self, logger): self.logger = logger
+    def __init__(self, logger): 
+        self.logger = logger
+        
+    # ==========================================
+    # 3. ENCRYPTION LAYER (AES-256 + ASCON-128)
+    # ==========================================
     def encrypt(self, file_path, password):
-        salt, aes_nonce, ascon_nonce = get_random_bytes(16), get_random_bytes(12), get_random_bytes(16)
+        """Encrypts file payload using AES-256-GCM, and binds metadata using ASCON-128."""
+        salt = get_random_bytes(16)
+        aes_nonce = get_random_bytes(12)
+        ascon_nonce = get_random_bytes(16)
+        
+        # PBKDF2 Key Derivation (100k rounds against brute force)
         keys = PBKDF2(password, salt, dkLen=48, count=100000)
         aes_key, ascon_key = keys[:32], keys[32:]
 
-        with open(file_path, 'rb') as f: plaintext = f.read()
-        ciphertext, tag = AES.new(aes_key, AES.MODE_GCM, nonce=aes_nonce).encrypt_and_digest(plaintext)
+        # Step A: Encrypt Payload (AES-256-GCM)
+        with open(file_path, 'rb') as f: 
+            plaintext = f.read()
+        cipher_aes = AES.new(aes_key, AES.MODE_GCM, nonce=aes_nonce)
+        ciphertext, tag = cipher_aes.encrypt_and_digest(plaintext)
 
+        # Step B: Secure Metadata (ASCON-128 AEAD)
         metadata = f"{aes_nonce.hex()}:{tag.hex()}".encode()
         enc_header = ascon.encrypt(ascon_key, ascon_nonce, associateddata=salt, plaintext=metadata)
 
+        # Output the .enc file
         with open(file_path + ".enc", 'wb') as f:
-            f.write(salt + ascon_nonce + len(enc_header).to_bytes(4,'big') + enc_header + ciphertext)
-        self.logger.info( f"✔ Secured:  {file_path}.enc")
+            f.write(salt + ascon_nonce + len(enc_header).to_bytes(4, 'big') + enc_header + ciphertext)
+            
+        self.logger.info( f"[OK] Secured:  {file_path}.enc")
 
+    # ==========================================
+    # 4. DECRYPTION & INTEGRITY LAYER
+    # ==========================================
     def decrypt(self, file_path, password):
+        """Validates ASCON-128 integrity first, then decrypts AES-256-GCM payload."""
         try:
             with open(file_path, 'rb') as f:
                 salt, ascon_nonce = f.read(16), f.read(16)
                 header_len = int.from_bytes(f.read(4), 'big')
                 enc_header, body = f.read(header_len), f.read()
 
+            # Derive Keys
             keys = PBKDF2(password, salt, dkLen=48, count=100000)
+            
+            # Step A: Validate Metadata Integrity (ASCON-128)
             meta = ascon.decrypt(keys[32:], ascon_nonce, associateddata=salt, ciphertext=enc_header)
             aes_nonce_hex, tag_hex = meta.decode().split(':')
 
-            plaintext = AES.new(keys[:32], AES.MODE_GCM, nonce=bytes.fromhex(aes_nonce_hex)).decrypt_and_verify(body, bytes.fromhex(tag_hex))
-            with open(file_path.replace(".enc", ""), 'wb') as f: f.write(plaintext)
-            self.logger.info( f"✔ Restored:  {file_path.replace('.enc', '')}")
+            # Step B: Decrypt Payload (AES-256-GCM)
+            cipher_aes = AES.new(keys[:32], AES.MODE_GCM, nonce=bytes.fromhex(aes_nonce_hex))
+            plaintext = cipher_aes.decrypt_and_verify(body, bytes.fromhex(tag_hex))
+            
+            with open(file_path.replace(".enc", ""), 'wb') as f: 
+                f.write(plaintext)
+                
+            self.logger.info( f"[OK] Restored:  {file_path.replace('.enc', '')}")
             return True
-        except: return False
+        except: 
+            return False
 
 def main():
     logger = setup_logging()
